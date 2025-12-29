@@ -83,6 +83,7 @@ export default async function handler(req, res) {
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
+    console.log("error");
     res.status(500).json({ error: e?.message || String(e) });
   }
 }
