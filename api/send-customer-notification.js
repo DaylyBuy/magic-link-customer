@@ -214,8 +214,15 @@ function initAdmin() {
 function setCors(req, res) {
   const origin = req.headers.origin || "";
   const ALLOW = [
+    // Admin hosting (NEW)
+    "https://daylybuy-admin-1d043.web.app",
+    "https://daylybuy-admin-1d043.firebaseapp.com",
+
+    // (Optional) old main hosting, keep only if you actually call from there
     "https://dayly-buy-d5f36.web.app",
     "https://dayly-buy-d5f36.firebaseapp.com",
+
+    // Local dev
     "http://localhost:3000",
     "http://localhost:5173",
     "http://localhost:5500",
