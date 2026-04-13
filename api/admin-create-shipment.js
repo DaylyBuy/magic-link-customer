@@ -212,6 +212,57 @@ function buildManifestShipment(order, pickupLocationName) {
   };
 }
 
+// function extractManifestResult(apiResponse) {
+//   const rawText =
+//     typeof apiResponse === "string"
+//       ? apiResponse
+//       : JSON.stringify(apiResponse || {});
+
+//   const asObject =
+//     apiResponse && typeof apiResponse === "object" ? apiResponse : null;
+
+//   const rawLower = rawText.toLowerCase();
+
+//   // Try common Delhivery fields without over-assuming one response format
+//   const packages =
+//     asObject?.packages ||
+//     asObject?.shipment ||
+//     asObject?.shipments ||
+//     asObject?.data?.packages ||
+//     asObject?.data?.shipments ||
+//     [];
+
+//   const firstPkg = Array.isArray(packages) ? packages[0] : null;
+
+//   const waybill = safeText(
+//     firstPkg?.waybill ||
+//       firstPkg?.awb ||
+//       asObject?.waybill ||
+//       asObject?.awb ||
+//       asObject?.packages?.[0]?.waybill,
+//   );
+
+//   const status = safeText(
+//     firstPkg?.status ||
+//       asObject?.status ||
+//       asObject?.message ||
+//       "Shipment Created",
+//   );
+
+//   const success =
+//     !!waybill ||
+//     rawLower.includes("success") ||
+//     rawLower.includes("created") ||
+//     rawLower.includes("waybill");
+
+//   return {
+//     success,
+//     waybill,
+//     status,
+//     raw: asObject || rawText,
+//   };
+// }
+
 function extractManifestResult(apiResponse) {
   const rawText =
     typeof apiResponse === "string"
@@ -221,9 +272,15 @@ function extractManifestResult(apiResponse) {
   const asObject =
     apiResponse && typeof apiResponse === "object" ? apiResponse : null;
 
-  const rawLower = rawText.toLowerCase();
+  const explicitSuccess = asObject?.success;
+  const explicitError = asObject?.error;
+  const remark = safeText(
+    asObject?.rmk ||
+      asObject?.remark ||
+      asObject?.message ||
+      asObject?.error_message,
+  );
 
-  // Try common Delhivery fields without over-assuming one response format
   const packages =
     asObject?.packages ||
     asObject?.shipment ||
@@ -243,22 +300,34 @@ function extractManifestResult(apiResponse) {
   );
 
   const status = safeText(
-    firstPkg?.status ||
-      asObject?.status ||
-      asObject?.message ||
-      "Shipment Created",
+    firstPkg?.status || asObject?.status || asObject?.message || "",
   );
 
+  // Respect explicit Delhivery failure flags first
+  if (explicitSuccess === false || explicitError === true) {
+    return {
+      success: false,
+      waybill: "",
+      status: status || "Manifest Failed",
+      errorMessage: remark || "Delhivery manifest failed",
+      raw: asObject || rawText,
+    };
+  }
+
+  // Success only if we truly have package creation evidence
   const success =
     !!waybill ||
-    rawLower.includes("success") ||
-    rawLower.includes("created") ||
-    rawLower.includes("waybill");
+    (Array.isArray(packages) &&
+      packages.length > 0 &&
+      !remark.toLowerCase().includes("error"));
 
   return {
     success,
     waybill,
-    status,
+    status: status || (success ? "Shipment Created" : "Manifest Failed"),
+    errorMessage: success
+      ? ""
+      : remark || "Delhivery did not confirm shipment creation",
     raw: asObject || rawText,
   };
 }
@@ -364,6 +433,26 @@ export default async function handler(req, res) {
 
     const manifest = extractManifestResult(parsed);
 
+    // if (!manifest.success) {
+    //   await orderRef.set(
+    //     {
+    //       shipping: {
+    //         ...(order.shipping || {}),
+    //         provider: "delhivery",
+    //         mode: cfg.mode,
+    //         lastError: "Delhivery did not confirm shipment creation",
+    //         lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    //       },
+    //       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    //       updatedBy: "admin",
+    //     },
+    //     { merge: true },
+    //   );
+
+    //   return bad(res, 502, "Delhivery did not confirm shipment creation", {
+    //     raw: parsed,
+    //   });
+    // }
     if (!manifest.success) {
       await orderRef.set(
         {
@@ -371,7 +460,15 @@ export default async function handler(req, res) {
             ...(order.shipping || {}),
             provider: "delhivery",
             mode: cfg.mode,
-            lastError: "Delhivery did not confirm shipment creation",
+            shipmentCreated: false,
+            pickupRequested: false,
+            awb: "",
+            waybill: "",
+            providerStatus: manifest.status || "Manifest Failed",
+            providerStatusMessage: manifest.errorMessage || "",
+            lastError:
+              manifest.errorMessage ||
+              "Delhivery did not confirm shipment creation",
             lastSyncedAt: admin.firestore.FieldValue.serverTimestamp(),
           },
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -380,9 +477,12 @@ export default async function handler(req, res) {
         { merge: true },
       );
 
-      return bad(res, 502, "Delhivery did not confirm shipment creation", {
-        raw: parsed,
-      });
+      return bad(
+        res,
+        502,
+        manifest.errorMessage || "Delhivery did not confirm shipment creation",
+        { raw: manifest.raw },
+      );
     }
 
     const update = {
