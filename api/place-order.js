@@ -587,9 +587,7 @@ function buildExpandedItemSnapshot(productDoc, quantity) {
   const heightCm = Math.max(0, toNum(productDoc?.heightCm, 0));
 
   return {
-    // legacy-compatible
     id: String(productDoc.id),
-    // future-safe
     productId: String(productDoc.id),
 
     name: safeText(productDoc?.name),
@@ -868,7 +866,8 @@ export default async function handler(req, res) {
 
       const packageSnapshot = buildPackageSnapshot(expandedItems);
 
-      const commonOrder = {
+      // Root order = new canonical structure
+      const rootOrder = {
         orderId,
         uid: String(uid),
 
@@ -932,13 +931,13 @@ export default async function handler(req, res) {
           updatedBy: "system",
         },
 
-        // legacy compatibility fields
+        // Temporary compatibility fields for readers that still expect them
+        legacyStatus: "Processing",
+        paymentMethod: paymentMethodLabel,
         itemsSubtotal: Math.round(itemsSubtotal),
         shippingTotal: Math.round(shippingTotal),
         discountAmount: Math.round(discountAmount),
         totalAmount: Math.round(totalAmount),
-        paymentMethod: paymentMethodLabel,
-        status: "Processing",
         mode,
         shippingProvider: "manual",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -946,10 +945,14 @@ export default async function handler(req, res) {
         updatedBy: "system",
       };
 
-      // TEMPORARY during migration:
-      // write root order + legacy nested copy
-      tx.set(rootOrderRef, commonOrder);
-      tx.set(legacyOrderRef, commonOrder);
+      // Legacy nested order = old flat structure for transition only
+      const legacyOrder = {
+        ...rootOrder,
+        status: "Processing",
+      };
+
+      tx.set(rootOrderRef, rootOrder);
+      tx.set(legacyOrderRef, legacyOrder);
 
       return {
         orderId,
