@@ -823,16 +823,23 @@ export default async function handler(req, res) {
 
     const orderRef = db.collection("orders").doc(createdOrder.orderId);
 
-    await orderRef.set(
-      {
-        "payment.razorpayOrderId": razorpayOrder.id,
-        "payment.razorpayOrderCreatedAt": now,
+    // await orderRef.set(
+    //   {
+    //     "payment.razorpayOrderId": razorpayOrder.id,
+    //     "payment.razorpayOrderCreatedAt": now,
 
-        "timestamps.updatedAt": now,
-        updatedAt: now,
-      },
-      { merge: true },
-    );
+    //     "timestamps.updatedAt": now,
+    //     updatedAt: now,
+    //   },
+    //   { merge: true },
+    // );
+
+    await orderRef.update({
+      "payment.razorpayOrderId": razorpayOrder.id,
+      "payment.razorpayOrderCreatedAt": now,
+      "timestamps.updatedAt": now,
+      updatedAt: now,
+    });
 
     await orderRef.collection("events").add({
       type: "RAZORPAY_ORDER_CREATED",
