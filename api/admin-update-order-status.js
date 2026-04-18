@@ -242,6 +242,7 @@ function validateTransition({ order, currentStatus, nextStatus }) {
 function buildUpdatePayload({ order, nextStatus, decoded }) {
   const now = admin.firestore.FieldValue.serverTimestamp();
   const customerStatus = getCustomerStatusFromFulfillment(nextStatus);
+  const updatedBy = safeText(decoded?.email || decoded?.uid || "admin");
 
   const payload = {
     "fulfillment.status": nextStatus,
@@ -250,9 +251,9 @@ function buildUpdatePayload({ order, nextStatus, decoded }) {
     "timestamps.updatedAt": now,
 
     updatedAt: now,
-    updatedBy: safeText(decoded?.email || decoded?.uid || "admin"),
+    updatedBy,
 
-    "meta.updatedBy": safeText(decoded?.email || decoded?.uid || "admin"),
+    "meta.updatedBy": updatedBy,
   };
 
   if (nextStatus === "confirmed" && !order?.timestamps?.confirmedAt) {
@@ -421,7 +422,7 @@ export default async function handler(req, res) {
         decoded,
       });
 
-      tx.set(orderRef, updatePayload, { merge: true });
+      tx.update(orderRef, updatePayload);
 
       const eventRef = orderRef.collection("events").doc();
 
