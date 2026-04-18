@@ -45,11 +45,6 @@ function lower(v) {
   return safeText(v).toLowerCase();
 }
 
-function toNum(v, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
 function normalizeStatus(raw, fallback = "") {
   const s = lower(raw);
 
@@ -216,6 +211,7 @@ function assertPaymentMatchesOrder({ order, payment, razorpayOrderIdFromDb }) {
   const expectedCurrency = safeText(
     order?.payment?.currency || "INR",
   ).toUpperCase();
+
   const actualCurrency = safeText(payment?.currency || "").toUpperCase();
 
   if (
@@ -230,12 +226,7 @@ function assertPaymentMatchesOrder({ order, payment, razorpayOrderIdFromDb }) {
   }
 }
 
-function buildOrderUpdateForPayment({
-  order,
-  payment,
-  paymentStatus,
-  decoded,
-}) {
+function buildOrderUpdateForPayment({ order, payment, paymentStatus }) {
   const now = admin.firestore.FieldValue.serverTimestamp();
 
   const update = {
@@ -243,6 +234,7 @@ function buildOrderUpdateForPayment({
     "payment.razorpayPaymentId": safeText(payment?.id),
     "payment.razorpaySignatureVerified": true,
     "payment.verifiedAt": now,
+
     "payment.methodDetails": buildPaymentMethodDetails(payment),
 
     "payment.razorpayPaymentStatus": safeText(payment?.status),
@@ -313,12 +305,15 @@ export default async function handler(req, res) {
     const razorpaySignature = safeText(req.body?.razorpay_signature);
 
     if (!orderId) return bad(res, 400, "Missing orderId");
+
     if (!razorpayOrderIdFromClient) {
       return bad(res, 400, "Missing razorpay_order_id");
     }
+
     if (!razorpayPaymentId) {
       return bad(res, 400, "Missing razorpay_payment_id");
     }
+
     if (!razorpaySignature) {
       return bad(res, 400, "Missing razorpay_signature");
     }
@@ -368,21 +363,19 @@ export default async function handler(req, res) {
     if (!signatureOk) {
       const now = admin.firestore.FieldValue.serverTimestamp();
 
-      await orderRef.set(
-        {
-          "payment.status": "failed",
-          "payment.razorpayPaymentId": razorpayPaymentId,
-          "payment.razorpaySignatureVerified": false,
-          "payment.failedAt": now,
-          "payment.failureReason": "Invalid Razorpay signature",
+      await orderRef.update({
+        "payment.status": "failed",
+        "payment.razorpayPaymentId": razorpayPaymentId,
+        "payment.razorpaySignatureVerified": false,
+        "payment.failedAt": now,
+        "payment.failureReason": "Invalid Razorpay signature",
 
-          "fulfillment.customerStatus": "payment_failed",
+        "fulfillment.status": "pending",
+        "fulfillment.customerStatus": "payment_failed",
 
-          "timestamps.updatedAt": now,
-          updatedAt: now,
-        },
-        { merge: true },
-      );
+        "timestamps.updatedAt": now,
+        updatedAt: now,
+      });
 
       await orderRef.collection("events").add({
         type: "RAZORPAY_SIGNATURE_VERIFICATION_FAILED",
@@ -419,10 +412,9 @@ export default async function handler(req, res) {
       order,
       payment,
       paymentStatus,
-      decoded,
     });
 
-    await orderRef.set(updatePayload, { merge: true });
+    await orderRef.update(updatePayload);
 
     await orderRef.collection("events").add({
       type: "RAZORPAY_PAYMENT_VERIFIED",
