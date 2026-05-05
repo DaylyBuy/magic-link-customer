@@ -34,3 +34,19 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# local env files
+.env
+.env.*
+functions/.env
+functions/.env.*
+
+# local/generated files
+dir_struct.py
+output.txt
+
+# local secrets / service account keys
+serviceAccountKey.json
+*.serviceAccountKey.json
+*-service-account.json
+credentials.json
