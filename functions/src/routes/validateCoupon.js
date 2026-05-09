@@ -26,6 +26,18 @@ function roundMoney(v) {
   return Math.max(0, Math.round(toNum(v, 0)));
 }
 
+const FREE_SHIPPING_ITEMS_SUBTOTAL_THRESHOLD = 499;
+
+function computeShippingAfterPolicy(itemsSubtotal, shippingTotal) {
+  const roundedItemsSubtotal = roundMoney(itemsSubtotal);
+
+  if (roundedItemsSubtotal > FREE_SHIPPING_ITEMS_SUBTOTAL_THRESHOLD) {
+    return 0;
+  }
+
+  return roundMoney(shippingTotal);
+}
+
 function toLowerTrim(v) {
   return safeText(v).toLowerCase();
 }
@@ -127,10 +139,16 @@ function computeTotalsFromProducts(items, productMap) {
     });
   }
 
+  const roundedItemsSubtotal = roundMoney(itemsSubtotal);
+  const roundedShippingTotal = computeShippingAfterPolicy(
+    roundedItemsSubtotal,
+    shippingTotal,
+  );
+
   return {
     ok: true,
-    itemsSubtotal: roundMoney(itemsSubtotal),
-    shippingTotal: roundMoney(shippingTotal),
+    itemsSubtotal: roundedItemsSubtotal,
+    shippingTotal: roundedShippingTotal,
     expandedItems,
   };
 }

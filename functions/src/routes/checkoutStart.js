@@ -17,6 +17,18 @@ function roundMoney(v) {
   return Math.max(0, Math.round(toNum(v, 0)));
 }
 
+const FREE_SHIPPING_ITEMS_SUBTOTAL_THRESHOLD = 499;
+
+function computeShippingAfterPolicy(itemsSubtotal, shippingTotal) {
+  const roundedItemsSubtotal = roundMoney(itemsSubtotal);
+
+  if (roundedItemsSubtotal > FREE_SHIPPING_ITEMS_SUBTOTAL_THRESHOLD) {
+    return 0;
+  }
+
+  return roundMoney(shippingTotal);
+}
+
 function clampQty(v) {
   const n = Number(v);
 
@@ -523,7 +535,10 @@ async function createPendingPrepaidOrder({ db, decoded, reqBody }) {
     }
 
     const roundedItemsSubtotal = roundMoney(itemsSubtotal);
-    const roundedShippingTotal = roundMoney(shippingTotal);
+    const roundedShippingTotal = computeShippingAfterPolicy(
+      itemsSubtotal,
+      shippingTotal,
+    );
     const roundedDiscountAmount = roundMoney(discountAmount);
     const codFee = 0;
 
